@@ -153,3 +153,69 @@ SELECT
     END AS diversion_volume_af
 FROM unpivoted
 ORDER BY ar_waterrightid asc, ar_annualreportyear asc, month_num asc;
+
+-- with the following, save the results in a TEMP table
+-- the results can be used in subsequent queries in the same snowflake session
+CREATE OR REPLACE TEMP TABLE converted_diversions AS
+WITH months AS (
+    SELECT * FROM (
+        VALUES
+            (1,  'JAN'), (2,  'FEB'), (3,  'MAR'), (4,  'APR'),
+            (5,  'MAY'), (6,  'JUN'), (7,  'JUL'), (8,  'AUG'),
+            (9,  'SEP'), (10, 'OCT'), (11, 'NOV'), (12, 'DEC')
+    ) AS m(month_num, month_abbr)
+),
+unpivoted AS (
+    SELECT
+        r.ar_waterrightid,
+        r.ar_annualreportyear,
+        r.ar_monthlydiversionunit,
+        --r.*,
+        m.month_num,
+        m.month_abbr,
+        CASE m.month_abbr
+            WHEN 'JAN' THEN r.AR_JANDIVERSIONVOLUME
+            WHEN 'FEB' THEN r.AR_FEBDIVERSIONVOLUME
+            WHEN 'MAR' THEN r.AR_MARDIVERSIONVOLUME
+            WHEN 'APR' THEN r.AR_APRDIVERSIONVOLUME
+            WHEN 'MAY' THEN r.AR_MAYDIVERSIONVOLUME
+            WHEN 'JUN' THEN r.AR_JUNDIVERSIONVOLUME
+            WHEN 'JUL' THEN r.AR_JULDIVERSIONVOLUME
+            WHEN 'AUG' THEN r.AR_AUGDIVERSIONVOLUME
+            WHEN 'SEP' THEN r.AR_SEPDIVERSIONVOLUME
+            WHEN 'OCT' THEN r.AR_OCTDIVERSIONVOLUME
+            WHEN 'NOV' THEN r.AR_NOVDIVERSIONVOLUME
+            WHEN 'DEC' THEN r.AR_DECDIVERSIONVOLUME
+        END AS raw_diversion_vol
+    FROM ANNUAL_REPORTS r
+    CROSS JOIN months m
+)
+SELECT
+    ar_waterrightid,
+    ar_annualreportyear,
+    month_num,
+    month_abbr,
+    AR_MONTHLYDIVERSIONUNIT AS original_unit,
+    raw_diversion_vol AS original_volume,
+    CASE
+        WHEN UPPER(AR_MONTHLYDIVERSIONUNIT) IN ('ACRE-FEET', 'AF', 'ACRE FEET')
+            THEN raw_diversion_vol
+        WHEN UPPER(AR_MONTHLYDIVERSIONUNIT) IN ('GALLONS', 'GAL')
+            THEN raw_diversion_vol / 325851.0
+        WHEN UPPER(AR_MONTHLYDIVERSIONUNIT) IN ('CUBIC FEET', 'CU FT')
+            THEN raw_diversion_vol / 43560.0
+    END AS diversion_volume_af
+FROM unpivoted
+ORDER BY ar_waterrightid asc, ar_annualreportyear asc, month_num asc;
+
+-- use the following to select the report IDs, months, and years when units were NULL
+-- selection is made from the temporary table created in above query
+SELECT
+    ar_waterrightid,
+    ar_annualreportyear,
+    month_num,
+    month_abbr,
+    original_unit
+FROM converted_diversions
+WHERE original_unit IS NULL
+ORDER BY ar_waterrightid ASC, ar_annualreportyear ASC, month_num ASC;
